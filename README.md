@@ -2,7 +2,7 @@
 
 <img src="https://img.shields.io/badge/%20-%20?style=for-the-badge&color=1a0b2e" width="1" height="4"/>
 
-#  LEAVE MANAGEMENT SYSTEM 
+# ✦ LEAVE MANAGEMENT SYSTEM ✦
 
 ### *AI-Generated Full-Stack Leave Request Approval Platform*
 
@@ -106,6 +106,9 @@ The objective of this repository is to evaluate how effectively **Lovable AI** c
 
 ### FastAPI Swagger Documentation
 
+```
+docs/images/swagger.png
+```
 
 <img src="docs/images/swagger.png" width="900"/>
 
@@ -306,6 +309,7 @@ Updated Status
 **Frontend**
 - React
 - TypeScript
+- TanStack Start
 - Vite
 
 </td>
@@ -385,7 +389,7 @@ http://localhost:8080
 
 The application was generated using the following prompt.
 
->
+> *(Paste the exact prompt here)*
 
 ```text
 Build a simple Leave Request Approval app — POC only, keep it minimal.
