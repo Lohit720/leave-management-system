@@ -106,9 +106,7 @@ The objective of this repository is to evaluate how effectively **Lovable AI** c
 
 ### FastAPI Swagger Documentation
 
-```
-docs/images/swagger.png
-```
+
 
 <img src="docs/images/swagger.png" width="900"/>
 
