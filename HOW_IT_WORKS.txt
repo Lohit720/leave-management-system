@@ -1,0 +1,268 @@
+<div align="center">
+
+<img src="https://img.shields.io/badge/%20-%20?style=for-the-badge&color=1a0b2e" width="1" height="4"/>
+
+# ✦ HOW IT WORKS ✦
+
+### *A Technical Walkthrough of the Leave Management System*
+
+<img src="https://img.shields.io/badge/Backend-FastAPI-6D28D9?style=flat-square&labelColor=1E1B4B" />
+<img src="https://img.shields.io/badge/Frontend-TanStack%20Start-4C1D95?style=flat-square&labelColor=1E1B4B" />
+<img src="https://img.shields.io/badge/Database-SQLite-3B0764?style=flat-square&labelColor=1E1B4B" />
+<img src="https://img.shields.io/badge/ORM-SQLAlchemy-7C3AED?style=flat-square&labelColor=1E1B4B" />
+
+</div>
+
+<br/>
+
+<div align="center">
+<img src="https://img.shields.io/badge/────────────────────────────────────────────-6D28D9?style=flat-square&labelColor=1E1B4B" />
+</div>
+
+<br/>
+
+## <img src="https://img.shields.io/badge/🧩-1E1B4B?style=flat-square" height="22"/> 1. The Big Picture
+
+Two independent processes run side by side on your machine:
+
+```
+┌──────────────────────────┐        ┌──────────────────────────┐
+│   FRONTEND (port 8080)   │  HTTP  │   BACKEND (port 8000)     │
+│   React + TanStack Start │ ─────► │   FastAPI + SQLAlchemy    │
+│   Employee / Manager UI  │ ◄───── │   leave.db (SQLite)       │
+└──────────────────────────┘  JSON  └──────────────────────────┘
+```
+
+- The **frontend** never touches the database directly — it only ever talks to the backend over HTTP.
+- The **backend** owns all the business logic: creating requests, validating input, and changing status.
+- The **database** is a single SQLite file (`leave.db`) that lives next to `main.py`. No external database server is needed.
+
+<br/>
+
+## <img src="https://img.shields.io/badge/⚙️-1E1B4B?style=flat-square" height="22"/> 2. Backend — What Happens on Startup
+
+When you run `uvicorn main:app --reload`, this sequence fires automatically:
+
+```
+uvicorn starts
+      │
+      ▼
+FastAPI app object is created
+      │
+      ▼
+"lifespan" hook runs seed()
+      │
+      ▼
+Base.metadata.create_all()  →  creates leave_requests table if missing
+      │
+      ▼
+Table empty?  →  Yes  →  Insert 3 sample records
+                 No   →  Skip seeding
+      │
+      ▼
+CORS middleware attached (allows localhost:5173 and localhost:8080)
+      │
+      ▼
+API is live at http://127.0.0.1:8000
+```
+
+This means the app is **self-initializing** — there's no manual migration step. Delete `leave.db` and restart, and it rebuilds itself with fresh sample data.
+
+<br/>
+
+## <img src="https://img.shields.io/badge/🗄️-1E1B4B?style=flat-square" height="22"/> 3. The Data Model
+
+Everything revolves around a single table:
+
+| Field | Type | Notes |
+|:--|:--|:--|
+| `id` | Integer | Primary key, auto-increment |
+| `employee_name` | String | Free text |
+| `leave_type` | String | One of `Sick`, `Casual`, `Annual` |
+| `start_date` / `end_date` | Date | ISO format (`YYYY-MM-DD`) |
+| `reason` | String | Free text, optional |
+| `status` | String | `pending` → `approved` / `rejected` |
+| `created_at` | DateTime | Set automatically on insert |
+
+A request always starts life as `pending`. It can only move to `approved` or `rejected` — there's no "undo" endpoint, so a decision is final unless the record is edited directly in the database.
+
+<br/>
+
+## <img src="https://img.shields.io/badge/🔌-1E1B4B?style=flat-square" height="22"/> 4. API Layer — Request Lifecycle
+
+<table>
+<tr><th>Action</th><th>Method &amp; Route</th><th>What the backend does</th></tr>
+<tr>
+<td>Submit a leave</td>
+<td><code>POST /leaves</code></td>
+<td>Validates the JSON body against the <code>LeaveCreate</code> schema, creates a row with <code>status="pending"</code>, commits it, returns the saved record (now with an <code>id</code>).</td>
+</tr>
+<tr>
+<td>List all leaves</td>
+<td><code>GET /leaves</code></td>
+<td>Queries every row in <code>leave_requests</code> and returns them as a JSON array, newest and oldest mixed by insertion order.</td>
+</tr>
+<tr>
+<td>Approve a leave</td>
+<td><code>PUT /leaves/{id}/approve</code></td>
+<td>Looks up the row by <code>id</code>. If found, sets <code>status="approved"</code> and commits. If not found, returns a 404.</td>
+</tr>
+<tr>
+<td>Reject a leave</td>
+<td><code>PUT /leaves/{id}/reject</code></td>
+<td>Same as above but sets <code>status="rejected"</code>.</td>
+</tr>
+</table>
+
+Every response is validated on the way out too, using the `LeaveOut` schema — so the frontend always receives a predictable, typed shape.
+
+<br/>
+
+## <img src="https://img.shields.io/badge/💻-1E1B4B?style=flat-square" height="22"/> 5. Frontend — How It Talks to the Backend
+
+All network calls are centralized in a single file: **`src/lib/api.ts`**. Nothing else in the app calls `fetch()` directly — every component goes through this layer.
+
+```ts
+listLeaves()        → GET  /leaves
+createLeave(input)   → POST /leaves
+approve(id)          → PUT  /leaves/{id}/approve
+reject(id)           → PUT  /leaves/{id}/reject
+```
+
+This matters for one practical reason: if the backend URL or a route ever changes, there's exactly **one file** to update.
+
+<br/>
+
+### Employee Flow
+
+```
+User fills the form (name, leave type, dates, reason)
+        │
+        ▼
+Clicks "Submit request"
+        │
+        ▼
+api.createLeave() → POST /leaves
+        │
+        ▼
+Backend validates + inserts row (status = pending)
+        │
+        ▼
+Response returned with new id
+        │
+        ▼
+UI resets the form / shows confirmation
+```
+
+### Manager Flow
+
+```
+Manager view loads
+        │
+        ▼
+api.listLeaves() → GET /leaves
+        │
+        ▼
+Table renders every request with a status badge
+        │
+        ▼
+Pending rows show Approve / Reject buttons
+        │
+        ▼
+Click → api.approve(id) or api.reject(id)
+        │
+        ▼
+Backend updates status → responds with updated row
+        │
+        ▼
+UI re-fetches or patches local state → badge updates instantly
+```
+
+<br/>
+
+## <img src="https://img.shields.io/badge/🎨-1E1B4B?style=flat-square" height="22"/> 6. Status Badges — The Visual Language
+
+The whole UI hinges on one field: `status`. It drives both color and available actions.
+
+<img src="https://img.shields.io/badge/pending-A78BFA?style=flat-square&labelColor=1E1B4B" /> → amber/violet badge, Approve/Reject buttons visible
+<br/>
+<img src="https://img.shields.io/badge/approved-34D399?style=flat-square&labelColor=1E1B4B" /> → green badge, no action buttons
+<br/>
+<img src="https://img.shields.io/badge/rejected-F87171?style=flat-square&labelColor=1E1B4B" /> → red badge, no action buttons
+
+<br/>
+
+## <img src="https://img.shields.io/badge/🧱-1E1B4B?style=flat-square" height="22"/> 7. Why TanStack Start (Not Plain Vite)
+
+The frontend isn't just React + Vite — it's built on **TanStack Start**, which adds file-based routing and a server entry point on top of Vite:
+
+```
+src/
+├── routes/          → file-based routes (page structure)
+│   ├── __root.tsx    → root layout wrapping every page
+│   └── index.tsx      → the Employee/Manager toggle view
+├── router.tsx        → wires up the TanStack Router instance
+├── server.ts         → SSR / server entry point
+├── start.ts           → app bootstrap
+└── lib/api.ts          → all backend communication
+```
+
+In practice this means routing and the server entry are managed by the framework, while Vite still handles bundling and the dev server underneath.
+
+<br/>
+
+## <img src="https://img.shields.io/badge/🔐-1E1B4B?style=flat-square" height="22"/> 8. CORS — Why the Two Ports Need to Trust Each Other
+
+The frontend (port `8080` in dev, sometimes `5173`) and backend (port `8000`) are different origins as far as the browser is concerned. FastAPI's `CORSMiddleware` explicitly allows both:
+
+```python
+allow_origins=["http://localhost:5173", "http://localhost:8080"]
+```
+
+Without this, the browser would block every `fetch()` call from the frontend to the backend with a CORS error — this is what makes local development actually work.
+
+<br/>
+
+## <img src="https://img.shields.io/badge/🧭-1E1B4B?style=flat-square" height="22"/> 9. End-to-End, One More Time
+
+```
+ EMPLOYEE                MANAGER
+    │                       │
+    ▼                       │
+ Submit form                │
+    │                       │
+    ▼                       │
+ POST /leaves               │
+    │                       │
+    ▼                       │
+ SQLite: new row             │
+ status = pending            │
+    │                       │
+    └──────────────► GET /leaves
+                            │
+                            ▼
+                     Table renders,
+                     badge = pending
+                            │
+                            ▼
+                     Approve / Reject
+                            │
+                            ▼
+                     PUT /leaves/{id}/approve|reject
+                            │
+                            ▼
+                     SQLite: status updated
+                            │
+                            ▼
+                     Badge updates on screen
+```
+
+<br/>
+
+<div align="center">
+
+<img src="https://img.shields.io/badge/─────%20✦%20─────-6D28D9?style=flat-square&labelColor=1E1B4B" />
+
+*For setup instructions, API reference, and screenshots, see [README.md](README.md).*
+
+</div>
